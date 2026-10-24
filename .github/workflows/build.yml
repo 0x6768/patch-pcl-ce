@@ -27,7 +27,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 带 token 调用，避免匿名 API 限流（60 次/小时）
           latest=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" \
             https://api.github.com/repos/PCL-Community/PCL-CE/releases/latest \
             | jq -r .tag_name)
@@ -38,7 +37,6 @@ jobs:
             exit 0
           fi
 
-          # 统一存成“无 v 前缀”，例如 2.15.1
           clean_tag="${latest#v}"
           echo "tag=${clean_tag}" >> $GITHUB_OUTPUT
 
@@ -60,7 +58,7 @@ jobs:
     name: Build & Release
     needs: check-release
     if: needs.check-release.outputs.has_new == 'true'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     env:
       LANG: en_US.UTF-8
 
@@ -70,72 +68,67 @@ jobs:
 
       - name: Download upstream release zipball
         run: |
-          clean_tag="${{ needs.check-release.outputs.tag }}"
-          # GitHub 的 zip URL 用带 v 的 tag，例如 v2.15.1
-          tag="v${clean_tag}"
-          echo "Downloading PCL-CE ${tag}..."
+          $clean_tag = "${{ needs.check-release.outputs.tag }}"
+          $tag = "v${clean_tag}"
+          Write-Host "Downloading PCL-CE ${tag}..."
 
-          curl -L "https://github.com/PCL-Community/PCL-CE/archive/refs/tags/${tag}.zip" \
-            -o /tmp/upstream.zip
+          Invoke-WebRequest -Uri "https://github.com/PCL-Community/PCL-CE/archive/refs/tags/${tag}.zip" `
+            -OutFile "$env:TEMP\upstream.zip"
 
-          if [ ! -s /tmp/upstream.zip ]; then
-            echo "ERROR: download failed or file empty"
+          if (-not (Test-Path "$env:TEMP\upstream.zip") -or (Get-Item "$env:TEMP\upstream.zip").Length -eq 0) {
+            Write-Error "ERROR: download failed or file empty"
             exit 1
-          fi
-          echo "Download OK: $(du -h /tmp/upstream.zip | cut -f1)"
+          }
+          Write-Host "Download OK: $((Get-Item "$env:TEMP\upstream.zip").Length / 1MB) MB"
 
       - name: Extract upstream source
         run: |
-          # 解压到 tmp 子目录，完全不依赖 GitHub 的目录名
-          mkdir -p upstream/tmp
-          unzip -q /tmp/upstream.zip -d upstream/tmp
+          New-Item -ItemType Directory -Force -Path upstream/tmp | Out-Null
+          Expand-Archive -Path "$env:TEMP\upstream.zip" -DestinationPath upstream/tmp -Force
 
-          echo "Unzipped contents:"
-          ls -la upstream/tmp/
+          Write-Host "Unzipped contents:"
+          Get-ChildItem upstream/tmp/
 
-          top_dir=$(find upstream/tmp -maxdepth 1 -mindepth 1 -type d | head -1)
+          $top_dir = Get-ChildItem upstream/tmp -Directory | Select-Object -First 1
 
-          if [ -z "$top_dir" ]; then
-            echo "ERROR: no directory found in zipball"
-            ls -la upstream/tmp/
+          if (-not $top_dir) {
+            Write-Error "ERROR: no directory found in zipball"
             exit 1
-          fi
+          }
 
-          echo "Found top-level dir: $top_dir"
-          mv "$top_dir" upstream/src
-          rm -rf upstream/tmp
+          Write-Host "Found top-level dir: $($top_dir.FullName)"
+          Move-Item $top_dir.FullName upstream/src
+          Remove-Item -Recurse -Force upstream/tmp
 
-          echo "Extracted to upstream/src/"
-          ls upstream/src/
+          Write-Host "Extracted to upstream/src/"
+          Get-ChildItem upstream/src/
 
       - name: Apply Patches
         run: |
           cd upstream/src
           python ../../patch.py "PCL.Core/App/Region/RegionPolicy.cs"
-          cp ../../vendor/PageSetupUpdate.xaml.cs \
+          Copy-Item ../../vendor/PageSetupUpdate.xaml.cs `
             "Plain Craft Launcher 2/Pages/PageSetup/PageSetupUpdate.xaml.cs"
-          echo "Patches applied."
+          Write-Host "Patches applied."
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: 10.0.x
 
-      - name: Build Project (x86 only)
+      - name: Build Project (x64)
         env:
-          # 只保留微软登录；其余功能（联机/Sentry/CF/NAID）全部砍掉
           PCL_GITHUB_SHA: ${{ github.sha }}
           PCL_MS_CLIENT_ID: ${{ secrets.CLIENT_ID }}
         run: |
           cd upstream/src
-          dotnet publish "Plain Craft Launcher 2/Plain Craft Launcher 2.csproj" \
-            -p:Configuration=Release \
-            -p:Platform=x86 \
-            -p:Version="${{ needs.check-release.outputs.tag }}-patched" \
-            -p:InformationalVersion="${{ needs.check-release.outputs.tag }}-patched+${GITHUB_SHA::7}" \
-            -p:DeleteExistingFiles=true \
-            -o ./artifact \
-            --no-self-contained
+          dotnet publish "Plain Craft Launcher 2/Plain Craft Launcher 2.csproj" `
+            -p:Configuration=Release `
+            -p:Platform=x64 `
+            -p:Version="${{ needs.check-release.outputs.tag }}-patched" `
+            -p:InformationalVersion="${{ needs.check-release.outputs.tag }}-patched+${env:GITHUB_SHA::7}" `
+            -p:DeleteExistingFiles=true `
+            -o ./artifact
 
       - name: Create Release
         uses: ncipollo/release-action@v1
