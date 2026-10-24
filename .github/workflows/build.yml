@@ -112,9 +112,8 @@ jobs:
         run: |
           cd upstream/src
           python ../../patch.py "PCL.Core/App/Region/RegionPolicy.cs"
-          python ../../patch.py "PCL.Core/App/Config.cs"
           cp ../../vendor/PageSetupUpdate.xaml.cs \
-             "Plain Craft Launcher 2/Pages/PageSetup/PageSetupUpdate.xaml.cs"
+            "Plain Craft Launcher 2/Pages/PageSetup/PageSetupUpdate.xaml.cs"
           echo "Patches applied."
 
       - name: Setup .NET SDK
