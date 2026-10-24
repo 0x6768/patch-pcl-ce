@@ -123,10 +123,14 @@ jobs:
         run: |
           cd upstream/src
           dotnet publish "Plain Craft Launcher 2/Plain Craft Launcher 2.csproj" `
-            -p:Configuration=Release `
+            -c Release `
+            -r win-x64 `
+            --no-self-contained `
             -p:Platform=x64 `
             -p:Version="${{ needs.check-release.outputs.tag }}-patched" `
             -p:InformationalVersion="${{ needs.check-release.outputs.tag }}-patched+${env:GITHUB_SHA::7}" `
+            -p:DebugType=none `
+            -p:DebugSymbols=false `
             -p:DeleteExistingFiles=true `
             -o ./artifact
 
