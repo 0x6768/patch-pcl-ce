@@ -1,16 +1,18 @@
+using System;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using PCL.Core.App;
-using PCL.Core.Utils;
 using PCL.Core.App.Localization;
+using PCL.Core.Utils;
 using PCL.Core.Utils.OS;
 
 namespace PCL;
 
 public partial class PageSetupUpdate
 {
-    public VersionDataModel updateInfo;
+    public VersionDataModel? updateInfo;
 
     // ============================================================
     // 是否修改版本（你们自己控制这个开关）
@@ -27,7 +29,7 @@ public partial class PageSetupUpdate
 
     private void Init()
     {
-        ModAnimation.AniBeginControl();
+        // 原：ModAnimation.AniBeginControl(); —— 上游已移除该 API，直接去掉
         TextMirrorCDK.Password = Config.Update.MirrorChyanKey;
 
         ComboSystemUpdateChannel.SelectedIndex = (int)Config.Update.UpdateChannel;
@@ -45,11 +47,11 @@ public partial class PageSetupUpdate
             TextCurrentDesc.Text = "当前为修改版本，更新功能已禁用。";
             CardUpdate.Visibility = Visibility.Collapsed;
             CardCheck.Visibility = Visibility.Visible;
-            ModAnimation.AniEndControl();
+            // 原：ModAnimation.AniEndControl();
             return;
         }
 
-        ModAnimation.AniEndControl();
+        // 原：ModAnimation.AniEndControl();
         CheckUpdate();
     }
 
@@ -102,17 +104,20 @@ public partial class PageSetupUpdate
         CardCheck.Visibility = Visibility.Visible;
         TextCurrentDesc.Text = Lang.Text("Setup.Update.Checking");
         BtnCheckAgain.IsEnabled = false;
+
         switch (await IsLatestAsync())
         {
             case UpdateStatus.Available:
             {
-                Exception checkUpdateEx = null;
+                Exception? checkUpdateEx = null;
                 try
                 {
                     updateInfo = UpdateManager.remoteServer.GetLatestVersion(
                         UpdateManager.IsCurrentVersionBeta
                             ? UpdateChannel.beta
-                            : UpdateChannel.stable, SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64);
+                            : UpdateChannel.stable,
+                        SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64);
+
                     TextUpdateName.Text = "PCL CE " + VersionNameFormat(updateInfo.VersionName);
                     var summary = updateInfo.Changelog.Between("<summary>", "</summary>");
                     if (!updateInfo.Changelog.Contains("<summary>") || string.IsNullOrWhiteSpace(summary.Trim()))
@@ -163,6 +168,7 @@ public partial class PageSetupUpdate
                 CardCheck.Visibility = Visibility.Collapsed;
                 break;
             }
+
             case UpdateStatus.Latest:
             {
                 CardUpdate.Visibility = Visibility.Collapsed;
@@ -171,6 +177,7 @@ public partial class PageSetupUpdate
                 TextCurrentDesc.Text = Lang.Text("Setup.Update.Latest");
                 break;
             }
+
             case UpdateStatus.Error:
             {
                 CardUpdate.Visibility = Visibility.Collapsed;
@@ -227,25 +234,22 @@ public partial class PageSetupUpdate
     private void ComboSystemUpdateMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (IsModifiedVersion) return;
-        if (!ModAnimation.AniExitsAnyControl())
-            Config.Update.UpdateMode = (LauncherAutoUpdateBehavior)ComboSystemUpdateMode.SelectedIndex;
+        // 原：if (!ModAnimation.AniExitsAnyControl())
+        Config.Update.UpdateMode = (LauncherAutoUpdateBehavior)ComboSystemUpdateMode.SelectedIndex;
     }
 
     private void ComboSystemUpdateBranch_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (IsModifiedVersion) return;
-        if (ModAnimation.AniExitsAnyControl())
-            return;
+        // 原：if (ModAnimation.AniExitsAnyControl()) return;
 
         var isCancelled = false;
         switch (ComboSystemUpdateChannel.SelectedIndex)
         {
             case 0:
-            {
                 break;
-            }
+
             case 1:
-            {
                 if (ModMain.MyMsgBox(Lang.Text("Setup.Update.Channel.Beta.Warning.Message"),
                         Lang.Text("Setup.Update.Channel.Common.Warning.Title"),
                         Lang.Text("Setup.Update.Channel.Common.Warning.Confirm"),
@@ -254,9 +258,8 @@ public partial class PageSetupUpdate
                 else
                     CheckUpdate();
                 break;
-            }
+
             case 2:
-            {
                 if (ModMain.MyMsgBox(Lang.Text("Setup.Update.Channel.Dev.Warning.Message"),
                         Lang.Text("Setup.Update.Channel.Common.Warning.Title"),
                         Lang.Text("Setup.Update.Channel.Common.Warning.Confirm"),
@@ -272,7 +275,7 @@ public partial class PageSetupUpdate
                     Lang.Text("Setup.Update.Channel.Dev.FinalConfirm.Message", confirmText),
                     button1: Lang.Text("Setup.Update.Channel.Dev.FinalConfirm.Submit"),
                     button2: Lang.Text("Common.Action.Cancel"), isWarn: true);
-    
+
                 if (ret == confirmText)
                 {
                     CheckUpdate();
@@ -283,14 +286,13 @@ public partial class PageSetupUpdate
                     isCancelled = true;
                 }
                 break;
-            }
         }
 
         if (isCancelled)
         {
-            ModAnimation.AniBeginControl();
+            // 原：ModAnimation.AniBeginControl();
             ComboSystemUpdateChannel.SelectedItem = e.RemovedItems[0];
-            ModAnimation.AniEndControl();
+            // 原：ModAnimation.AniEndControl();
         }
         else
         {
