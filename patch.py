@@ -8,7 +8,9 @@ Config.cs AST 修补已移除。
 import json
 import sys
 from pathlib import Path
-
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 REPLACEMENTS = {
     # 国家代码（ISO 3166-1 alpha-2）
     '"CN"': '"BV"',
@@ -50,7 +52,7 @@ REPLACEMENTS = {
 def patch_file(filepath: str) -> bool:
     path = Path(filepath)
     if not path.exists():
-        print(f"[!] 文件不存在: {path}")
+        print(f"[!] File not found: {path}")
         return False
 
     original = path.read_text(encoding="utf-8")
@@ -60,14 +62,14 @@ def patch_file(filepath: str) -> bool:
         if old in patched:
             count = patched.count(old)
             patched = patched.replace(old, new)
-            print(f"[+] {old} -> {new} ({count} 处)")
+            print(f"[+] {old} -> {new} ({count} occurrences)")
 
     if patched == original:
-        print(f"[!] 没有找到需要替换的字符串（跳过）: {path}")
+        print(f"[!] No replacements needed: {path}")
         return True
 
     path.write_text(patched, encoding="utf-8")
-    print(f"[✓] 完成: {path}")
+    print(f"[✓] Completed: {path}")
     return True
 
 
@@ -80,17 +82,17 @@ def apply_mapping(mapping_file: str = "r.json") -> bool:
     """
     path = Path(mapping_file)
     if not path.exists():
-        print(f"[!] 映射文件不存在（跳过）: {path}")
+        print(f"[!] Mapping file not found: {path}")
         return True
 
     try:
         mapping = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as ex:
-        print(f"[!] 映射文件解析失败: {path} ({ex})")
+        print(f"[!] Mapping file parse error: {path} ({ex})")
         return False
 
     if not isinstance(mapping, dict):
-        print(f"[!] 映射文件格式应为 JSON 对象: {path}")
+        print(f"[!] Mapping file format should be JSON object: {path}")
         return False
 
     all_ok = True
@@ -98,7 +100,7 @@ def apply_mapping(mapping_file: str = "r.json") -> bool:
         src_path = Path(str(src))
         dst_path = Path(str(dst))
         if not src_path.exists():
-            print(f"[!] 源文件不存在（跳过）: {src_path}")
+            print(f"[!] Source file not found: {src_path}")
             all_ok = False
             continue
 
@@ -109,7 +111,7 @@ def apply_mapping(mapping_file: str = "r.json") -> bool:
 
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         dst_path.write_text(replaced, encoding="utf-8")
-        print(f"[✓] 映射替换: {src_path} -> {dst_path}")
+        print(f"[✓] Mapping applied: {src_path} -> {dst_path}")
 
     return all_ok
 
@@ -123,10 +125,10 @@ def run_defaults():
     # RegionPolicy.cs
     default_region = Path("PCL.Core/App/Region/RegionPolicy.cs")
     if default_region.exists():
-        print("[+] 执行 RegionPolicy 修补")
+        print("[+] Applying RegionPolicy patch")
         results.append(patch_file(str(default_region)))
     else:
-        print(f"[!] 跳过 RegionPolicy（文件不存在）: {default_region}")
+        print(f"[!] Skipping RegionPolicy: {default_region}")
         results.append(True)
 
     # r.json 映射
@@ -137,7 +139,7 @@ def run_defaults():
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("[+] 未传入参数，执行默认修补（RegionPolicy + r.json）")
+        print("[+] No arguments provided, running default patch")
         sys.exit(0 if run_defaults() else 1)
 
     success = patch_file(sys.argv[1])
