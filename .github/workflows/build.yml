@@ -1,0 +1,131 @@
+name: Watch Upstream & Build Patched
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-release:
+    name: Check Upstream Release
+    runs-on: ubuntu-latest
+    outputs:
+      has_new: ${{ steps.check.outputs.has_new }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          sparse-checkout: .last_tag
+          sparse-checkout-cone-mode: false
+
+      - name: Get latest upstream release
+        id: check
+        run: |
+          latest=$(curl -s https://api.github.com/repos/PCL-Community/PCL-CE/releases/latest | jq -r .tag_name)
+          echo "tag=$latest" >> $GITHUB_OUTPUT
+
+          if [ -f .last_tag ]; then
+            last=$(cat .last_tag)
+          else
+            last=""
+          fi
+
+          if [ "$latest" != "$last" ] && [ "$latest" != "null" ]; then
+            echo "has_new=true" >> $GITHUB_OUTPUT
+            echo "New release: $latest (was: $last)"
+          else
+            echo "has_new=false" >> $GITHUB_OUTPUT
+            echo "No new release. Latest: $last"
+          fi
+
+  build-and-release:
+    name: Build & Release
+    needs: check-release
+    if: needs.check-release.outputs.has_new == 'true'
+    runs-on: ubuntu-latest
+    env:
+      LANG: en_US.UTF-8
+
+    steps:
+      - name: Checkout this repo (patch scripts & vendor files)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Download upstream release zipball
+        run: |
+          tag="${{ needs.check-release.outputs.tag }}"
+          echo "Downloading PCL-CE ${tag}..."
+          curl -L "https://github.com/PCL-Community/PCL-CE/archive/refs/tags/${tag}.zip" -o /tmp/upstream.zip
+
+      - name: Extract upstream source
+        run: |
+          mkdir -p upstream
+          cd upstream
+          unzip -q /tmp/upstream.zip
+          # GitHub zipball 顶层目录名格式: PCL-Community-PCL-CE-<tag>/
+          dir=$(ls -d PCL-Community-PCL-CE-*/ | head -1)
+          mv "$dir" src
+          echo "Extracted to upstream/src/"
+          ls upstream/src/
+
+      - name: Apply Patches
+        run: |
+          cd upstream/src
+          # 运行补丁脚本（脚本在仓库根目录，现在在 upstream/src/ 里跑）
+          python ../../patch.py "PCL.Core/App/Region/RegionPolicy.cs"
+          python ../../patch.py "PCL.Core/App/Config.cs"
+          # 整文件覆盖
+          cp ../../vendor/PageSetupUpdate.xaml.cs "Plain Craft Launcher 2/Pages/PageSetup/PageSetupUpdate.xaml.cs"
+          echo "Patches applied."
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build Project (x86 only)
+        env:
+          PCL_WRITE_SECRET: '1'
+          PCL_MS_CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          PCL_CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          PCL_NAID_CLIENT_ID: ${{ secrets.NAID_CLIENT_ID }}
+          PCL_NAID_CLIENT_SECRET: ${{ secrets.NAID_CLIENT_SECRET }}
+          PCL_GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cd upstream/src
+          dotnet publish "Plain Craft Launcher 2/Plain Craft Launcher 2.csproj" \
+          -p:Configuration=Release -p:Platform=x86 \
+          -p:DeleteExistingFiles=true -o ./artifact --no-self-contained
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.check-release.outputs.tag }}-patched
+          name: PCL CE ${{ needs.check-release.outputs.tag }} (RegionPatch)
+          body: |
+            这是一个修改版本，基于 ${{ needs.check-release.outputs.tag }}。
+
+            修改内容：
+            - 区域判定已调整
+            - 更新功能已禁用（修改版无法自动更新）
+
+            如需获取原版，请前往：
+            https://github.com/PCL-Community/PCL-CE/releases/tag/${{ needs.check-release.outputs.tag }}
+
+            本修改版按《PCL 分发有限许可》发布。
+            原作者：龙腾猫跃
+            赞助：https://afdian.com/@LTCatJump
+          artifacts: upstream/src/artifact/**
+          makeLatest: false
+
+      - name: Update .last_tag and push
+        run: |
+          echo "${{ needs.check-release.outputs.tag }}" > .last_tag
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .last_tag
+          git commit -m "chore: update .last_tag to ${{ needs.check-release.outputs.tag }}"
+          git push
