@@ -165,6 +165,8 @@ jobs:
           python ../../patch.py "PCL.Core/App/Region/RegionPolicy.cs"
           Copy-Item ../../vendor/PageSetupUpdate.xaml.cs `
             "Plain Craft Launcher 2/Pages/PageSetup/PageSetupUpdate.xaml.cs"
+          Copy-Item ../../vendor/UpdateManager.cs `
+            "Plain Craft Launcher 2/Modules/Updates/UpdateManager.cs"
           Write-Host "Patches applied."
 
       - name: Setup .NET SDK
