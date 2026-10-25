@@ -175,7 +175,12 @@ jobs:
       - name: Build Project (x64)
         env:
           PCL_GITHUB_SHA: ${{ github.sha }}
-          PCL_MS_CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          PCL_MS_CLIENT_ID: ${{ secrets.PCL_MS_CLIENT_ID }}
+          PCL_CURSEFORGE_API_KEY: ${{ secrets.PCL_CURSEFORGE_API_KEY }}
+          PCL_NAID_CLIENT_ID: ${{ secrets.PCL_NAID_CLIENT_ID }}
+          PCL_NAID_CLIENT_SECRET: ${{ secrets.PCL_NAID_CLIENT_SECRET }}
+          PCL_LINK_SERVER_ROOT: ${{ secrets.PCL_LINK_SERVER_ROOT }}
+          PCL_LOBBY_DEFAULT_SECRET: ${{ secrets.PCL_LOBBY_DEFAULT_SECRET }}
         run: |
           cd upstream/src
           dotnet publish "Plain Craft Launcher 2/Plain Craft Launcher 2.csproj" `
