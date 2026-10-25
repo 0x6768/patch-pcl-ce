@@ -7,6 +7,12 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build: ignore .last_tag, rebuild and release (auto-suffix if tag exists)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   check-release:
@@ -40,6 +46,14 @@ jobs:
           clean_tag="${latest#v}"
           echo "tag=${clean_tag}" >> $GITHUB_OUTPUT
 
+          # force mode: skip .last_tag entirely
+          if [ "${{ github.event.inputs.force_build }}" = "true" ]; then
+            echo "has_new=true" >> $GITHUB_OUTPUT
+            echo "Force build enabled — ignoring .last_tag, will rebuild ${clean_tag}"
+            exit 0
+          fi
+
+          # normal mode: compare with .last_tag
           if [ -f .last_tag ]; then
             last=$(cat .last_tag)
           else
@@ -62,9 +76,51 @@ jobs:
     env:
       LANG: en_US.UTF-8
 
+    outputs:
+      release_tag: ${{ steps.suffix.outputs.release_tag }}
+
     steps:
       - name: Checkout this repo (patch scripts & vendor files)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # ── 核心：计算带后缀的 tag ──
+      - name: Determine release tag (with auto-suffix)
+        id: suffix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $base = "${{ needs.check-release.outputs.tag }}-patched"
+          $headers = @{
+            Authorization = "token $env:GITHUB_TOKEN"
+            Accept        = "application/vnd.github+json"
+          }
+
+          # check if tag exists on remote
+          function TagExists($tag) {
+            try {
+              Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$tag" -Headers $headers -ErrorAction Stop
+              return $true
+            } catch {
+              return $false
+            }
+          }
+
+          if (-not (TagExists $base)) {
+            $release_tag = $base
+            Write-Host "Using tag: $release_tag"
+          } else {
+            Write-Host "Tag '$base' exists, finding next available suffix..."
+            $i = 1
+            do {
+              $candidate = "$base-$i"
+              $i++
+            } while (TagExists $candidate)
+            $release_tag = $candidate
+            Write-Host "Using tag with suffix: $release_tag"
+          }
+
+          # output for downstream steps
+          echo "release_tag=$release_tag" >> $env:GITHUB_OUTPUT
 
       - name: Download upstream release zipball
         run: |
@@ -137,7 +193,7 @@ jobs:
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ needs.check-release.outputs.tag }}-patched
+          tag: ${{ steps.suffix.outputs.release_tag }}
           name: PCL CE ${{ needs.check-release.outputs.tag }} (RegionPatch)
           body: |
             这是一个修改版本，基于 ${{ needs.check-release.outputs.tag }}。
@@ -160,6 +216,6 @@ jobs:
           echo "${{ needs.check-release.outputs.tag }}" > .last_tag
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .last_tag
+          git add -f .last_tag
           git commit -m "chore: update .last_tag to ${{ needs.check-release.outputs.tag }}"
           git push
