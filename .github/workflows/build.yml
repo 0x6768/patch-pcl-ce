@@ -177,6 +177,7 @@ jobs:
       - name: Build Project (x64)
         env:
           PCL_GITHUB_SHA: ${{ github.sha }}
+          PCL_WRITE_SECRET: '1'
           PCL_MS_CLIENT_ID: ${{ secrets.PCL_MS_CLIENT_ID }}
           PCL_CURSEFORGE_API_KEY: ${{ secrets.PCL_CURSEFORGE_API_KEY }}
           PCL_NAID_CLIENT_ID: ${{ secrets.PCL_NAID_CLIENT_ID }}
